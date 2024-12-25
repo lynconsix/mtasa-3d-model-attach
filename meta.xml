@@ -1,0 +1,33 @@
+<meta>
+	<info author="lynconsix (a7dev)" name="3D Model Attach" type="script" version="1.0.0" />
+
+	<script src="configuration.lua" type="client" cache="false" />
+
+	<script src="helpers/*.lua" type="client" cache="false" />
+
+	<script src="source/matrix.lua" type="client" cache="false" />
+	<script src="source/main.lua" type="client" cache="false" />
+	<script src="source/client.lua" type="client" cache="false" />
+	<script src="source/server.lua" type="server" />
+
+	<export function="Is3DModelAttachedToBone" type="shared" />
+
+	<export function="Attach3DModelToBone" type="shared" />
+	<export function="Detach3DModelFromBone" type="shared" />
+	<export function="Update3DModelAttachment" type="shared" />
+
+	<export function="DetachALL3DModels" type="shared" />
+	<export function="DetachALL3DModelsFromElement" type="shared" />
+
+	<export function="Set3DModelBone" type="shared" />
+	<export function="Set3DModelPositionOffset" type="shared" />
+	<export function="Set3DModelRotationOffset" type="shared" />
+	<export function="Set3DModelScale" type="shared" />
+
+	<export function="Set3DModelPed" type="shared" />
+
+	<export function="Set3DModelVisible" type="shared" />
+	<export function="Set3DModelVisibleAll" type="shared" />
+
+	<export function="Get3DModelAttachmentProperties" type="shared" />
+</meta>
