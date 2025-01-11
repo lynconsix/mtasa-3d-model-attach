@@ -4,7 +4,7 @@ addEventHandler("onClientCustomReceiveCache", getResourceRootElement(),
 	function(attachmentsCache)
 		-- https://wiki.multitheftauto.com/wiki/TriggerClientEvent
 		for Key, Value in pairs(attachmentsCache) do
-			Attach3DModelToBone(Value.PedElement, Value.Key, Value.ModelId, Value.Bone, Value.Position, Value.Rotation, Value.Scale)
+			Attach3DModelToBone(Value.PedElement, Value.ModelId, Value.Bone, Value.Position, Value.Rotation, Value.Scale)
 		end
 
 		-- https://wiki.multitheftauto.com/wiki/TriggerClientEvent
@@ -22,19 +22,30 @@ addEventHandler("onClientCustomReceiveCache", getResourceRootElement(),
 		-- https://wiki.multitheftauto.com/wiki/TriggerClientEvent
 		addEvent("onClientUsefulUpdate3DModel", true)
 		addEventHandler("onClientUsefulUpdate3DModel", getResourceRootElement(), 
-			function(identifier, pedElement, key, properties)
-				if identifier == "Bone" then
-					Set3DModelBone(pedElement, key, properties.Bone)
-				elseif identifier == "PositionOffset" then
-					Set3DModelPositionOffset(pedElement, key, properties.PositionOffset)
-				elseif identifier == "RotationOffset" then
-					Set3DModelRotationOffset(pedElement, key, properties.RotationOffset)
-				elseif identifier == "Scale" then
-					Set3DModelScale(pedElement, key, properties.Scale)
-				elseif identifier == "Visible" then
-					Set3DModelVisible(pedElement, key, properties.Visible)
-				elseif identifier == "VisibleAll" then
-					Set3DModelVisibleAll(pedElement, properties.Visible)
+			function(triggerName, identifier, properties, ...)
+				if triggerName == "PedElement" then
+					Set3DModelPed(identifier, ...)
+
+				elseif triggerName == "Bone" then
+					Set3DModelBone(identifier, properties.Bone)
+
+				elseif triggerName == "PositionOffset" then
+					Set3DModelPositionOffset(identifier, properties.PositionOffset)
+
+				elseif triggerName == "RotationOffset" then
+					Set3DModelRotationOffset(identifier, properties.RotationOffset)
+
+				elseif triggerName == "Scale" then
+					Set3DModelScale(identifier, properties.Scale)
+
+				elseif triggerName == "Visible" then
+					Set3DModelVisible(identifier, properties.Visible)
+
+				elseif triggerName == "VisibleAll" then
+					Set3DModelVisibleAll(properties.Visible)
+
+				elseif triggerName == "VisibleAllFromElement" then
+					Set3DModelVisibleAllFromElement(properties.Visible, ...)
 				end
 			end
 		)
@@ -49,9 +60,19 @@ addEventHandler("onClientResourceStop", getResourceRootElement(),
 			DX_MODELS_STREAMING[ModelId] = nil
 		end
 
-		for Index = 1, #MODEL_CACHE_ASSIGNED_TO_STREAMING do
-			table.remove(MODEL_CACHE_ASSIGNED_TO_STREAMING, Index)
-			MODEL_CACHE_ASSIGNED_TO_STREAMING[Index] = nil
+		for Index = 1, #DX_MODEL_CACHE_ASSIGNED_TO_STREAMING do
+			table.remove(DX_MODEL_CACHE_ASSIGNED_TO_STREAMING, Index)
+			DX_MODEL_CACHE_ASSIGNED_TO_STREAMING[Index] = nil
+		end
+
+		for RegisterId = 1, #DX_MODELS_REFERENCES do
+			local Value = DX_MODELS_REFERENCES[RegisterId]
+
+			if Value.Element and isElement(Value.Element) then
+				destroyElement(Value.Element)
+			end
+
+			DX_MODELS_REFERENCES[RegisterId] = nil
 		end
 	end
 )

@@ -9,6 +9,17 @@ function CountModelOccurrences(cache)
 	return CountList
 end
 
+-- https://www.lua.org/pil/2.5.html
+function FindEmptyEntry(stack)
+	for Index, Value in ipairs(stack) do
+		if not Value then
+			return Index
+		end
+	end
+
+	return #stack + 1
+end
+
 -- https://wiki.multitheftauto.com/wiki/Table.size
 function Length(stack)
 	local Count = 0
