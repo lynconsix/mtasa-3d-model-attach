@@ -1,105 +1,80 @@
-DX_MODELS_ATTACHMENTS = {}
+DX_MODELS_REFERENCES = {}
+DX_MODELS_INSTANCES = {}
+
 DX_MODELS_STREAMING = {}
 
-CACHE_FOR_3D_MODEL_RENDERING = {}
-MODEL_CACHE_ASSIGNED_TO_STREAMING = {}
-
-local RendererState = false
+DX_MODELS_RENDERED_CACHE = {}
+DX_MODEL_CACHE_ASSIGNED_TO_STREAMING = {}
 
 -- https://wiki.multitheftauto.com/wiki/IsElement
-local function ValidElementAndKey(pedElement, key)
-	if not isElement(pedElement) then
-		return false, error("Invalid pedElement")
-	end
-
-	if not key then
-		return false, error("Invalid key")
-	end
-
-	if not DX_MODELS_ATTACHMENTS[key] then
-		return false, error("Invalid key")
-	end
-
-	return true
+function IsModel3DAttached(model3DElement)
+	return (model3DElement and DX_MODELS_INSTANCES[model3DElement]) and true or false
 end
 
 -- https://wiki.multitheftauto.com/wiki/EngineStreamingRequestModel
-function Attach3DModelToBone(pedElement, key, modelId, bone, position, rotation, scale)
-	if not isElement(pedElement) then
-		return false, error("Attach3DModelToBone: Invalid pedElement")
-	end
-
-	if not modelId or not bone then
-		return false, error("Attach3DModelToBone: Invalid arguments")
-	end
-
+function Attach3DModelToBone(pedElement, modelId, bone, position, rotation, scale)
 	local Bone = GetBoneId(bone)
+	local ElementType = getElementType(pedElement)
 
-	if not Bone then
-		return false, error("Attach3DModelToBone: Invalid bone")
-	end
+	assert(isElement(pedElement), "Bad argument @ 'Attach3DModelToBone' [expected element at argument 1, got " .. type(pedElement) .. "]")
+	assert(Bone, "Bad argument @ 'Attach3DModelToBone' [invalid bone at argument 3]")
+	assert(ElementType == "ped" or ElementType == "player", "Bad argument @ 'Attach3DModelToBone' [expected ped/player at argument 1, got " .. ElementType .. "]")
+
+	local RegisterId = FindEmptyEntry(DX_MODELS_REFERENCES)
+	local NewElement = createElement("3dmodelattachment", tostring(RegisterId))
 
 	if not DX_MODELS_STREAMING[modelId] then
 		engineStreamingRequestModel(modelId, true, true)
 		DX_MODELS_STREAMING[modelId] = true
 	end
 
-	local NewAttachment = {
-		Drawing = true, 
-		Visible = true, 
+	local Instance = {}
 
-		PedElement = pedElement,
-		Key = key,
+	Instance.Drawing = true
+	Instance.Visible = true
 
-		ModelId = modelId,
-		Bone = Bone,
+	Instance.PedElement = pedElement
 
-		Position = position or {0, 0, 0},
-		Rotation = rotation or {0, 0, 0},
+	Instance.ModelId = modelId
+	Instance.Bone = Bone
 
-		Scale = scale or {1, 1, 1}, 
-		RotationMatrix = CalculeRotationMatrix(rotation[1] or 0, rotation[2] or 0, rotation[3] or 0)
-	}
+	Instance.Position = position or {0, 0, 0}
+	Instance.Rotation = rotation or {0, 0, 0}
+	Instance.Scale = scale or {0, 0, 0}
 
-	if not DX_MODELS_ATTACHMENTS[key] then
-		table.insert(CACHE_FOR_3D_MODEL_RENDERING, NewAttachment)
+	Instance.RotationMatrix = CalculeRotationMatrix(Instance.Rotation[1], Instance.Rotation[2], Instance.Rotation[3])
 
-		DX_MODELS_ATTACHMENTS[key] = NewAttachment
+	table.insert(DX_MODELS_RENDERED_CACHE, Instance)
+	table.insert(DX_MODEL_CACHE_ASSIGNED_TO_STREAMING, modelId)
 
-		table.insert(MODEL_CACHE_ASSIGNED_TO_STREAMING, modelId)
-	end
+	DX_MODELS_REFERENCES[RegisterId] = {Element = NewElement, Instance = Instance}
+	DX_MODELS_INSTANCES[NewElement] = pedElement
 
-	if Length(CACHE_FOR_3D_MODEL_RENDERING) == 1 and not RendererState then
+	if Length(DX_MODELS_RENDERED_CACHE) == 1 then
 		ToggleEvents(true)
 	end
 
-	return true
+	return NewElement
 end
 
--- https://wiki.multitheftauto.com/wiki/EngineStreamingReleaseModel
-function Detach3DModelFromBone(pedElement, key)
-	if not isElement(pedElement) then
-		return false, error("Detach3DModelFromBone: Invalid pedElement")
+-- https://wiki.multitheftauto.com/wiki/DestroyElement
+function Detach3DModelFromBone(model3DElementOrId)
+	local Reference, RegisterId = Get3DModelProperties(model3DElementOrId)
+
+	if not Reference then
+		return false
 	end
 
-	if not key then
-		return false, error("Detach3DModelFromBone: Invalid arguments")
-	end
+	local Instance = Reference.Instance
+	local Element = Reference.Element
 
-	local Backup = DX_MODELS_ATTACHMENTS[key]
+	DX_MODELS_REFERENCES[RegisterId].Element = nil
+	DX_MODELS_REFERENCES[RegisterId].Instance = nil
 
-	if not Backup then
-		return false, error("Detach3DModelFromBone: Attachment not found")
-	end
+	CheckAttachment(Instance)
+	destroyElement(Element)
 
-	if Backup.PedElement ~= pedElement then
-		return false, error("Detach3DModelFromBone: Attachment not found")
-	end
-
-	DX_MODELS_ATTACHMENTS[key] = nil
-	CheckAttachment(Backup)
-
-	if Length(CACHE_FOR_3D_MODEL_RENDERING) == 0 and RendererState then
+	if Length(DX_MODELS_RENDERED_CACHE) == 0 then
 		ToggleEvents(false)
 	end
 
@@ -107,20 +82,25 @@ function Detach3DModelFromBone(pedElement, key)
 end
 
 -- https://www.lua.org/pil/2.5.html
-function Update3DModelAttachment(pedElement, key, properties)
-	if not ValidElementAndKey(pedElement, key) then
+function Update3DModelAttachment(model3DElementOrId, properties)
+	local Reference, RegisterId = Get3DModelProperties(model3DElementOrId)
+
+	if not Reference then
 		return false
 	end
 
-	local Backup = DX_MODELS_ATTACHMENTS[key]
-	local OldModelId = Backup.ModelId
+	local Instance = Reference.Instance
 
 	for Property, Value in pairs(properties) do
-		Backup[Property] = Value
+		Instance[Property] = Value
+	end
+
+	if properties.Bone then
+		Instance.Bone = GetBoneId(properties.Bone)
 	end
 
 	if properties.Rotation then
-		Backup.RotationMatrix = CalculeRotationMatrix(properties.Rotation[1] or 0, properties.Rotation[2] or 0, properties.Rotation[3] or 0)
+		Instance.RotationMatrix = CalculeRotationMatrix(properties.Rotation[1] or 0, properties.Rotation[2] or 0, properties.Rotation[3] or 0)
 	end
 
 	if properties.ModelId then
@@ -142,167 +122,91 @@ function Update3DModelAttachment(pedElement, key, properties)
 		table.insert(MODEL_CACHE_ASSIGNED_TO_STREAMING, properties.ModelId)
 	end
 
+	DX_MODELS_RENDERED_CACHE[RegisterId] = Instance
+
 	return true
 end
 
 -- https://www.lua.org/pil/2.5.html
+function Get3DModelProperties(model3DElementOrId)
+	if isElement(model3DElementOrId) and IsModel3DAttached(model3DElementOrId) then
+		local RegisterId = tonumber(getElementID(model3DElementOrId))
+		return DX_MODELS_REFERENCES[RegisterId] or false, RegisterId
+	else
+		return DX_MODELS_REFERENCES[model3DElementOrId] or false, model3DElementOrId
+	end
+end
+
+-- https://www.lua.org/pil/2.5.html
 local UsefulFunctionsList = {
-	["Is3DModelAttachedToBone"] = function(pedElement, key)
-		if not isElement(pedElement) then
-			return false, error("Is3DModelAttachedToBone: Invalid pedElement")
-		end
-
-		if not key then
-			return false, error("Is3DModelAttachedToBone: Invalid arguments")
-		end
-
-		return DX_MODELS_ATTACHMENTS[key] and DX_MODELS_ATTACHMENTS[key].PedElement == pedElement
-	end,
-
 	["DetachALL3DModels"] = function()
-		for Key in pairs(DX_MODELS_ATTACHMENTS) do
-			Detach3DModelFromBone(DX_MODELS_ATTACHMENTS[Key].PedElement, Key)
+		for RegisterId = 1, #DX_MODELS_REFERENCES do
+			local Value = DX_MODELS_REFERENCES[RegisterId]
+
+			if Value.Element and isElement(Value.Element) then
+				Detach3DModelFromBone(Value.Element)
+			end
 		end
-	end,
+	end, 
 
 	["DetachALL3DModelsFromElement"] = function(pedElement)
-		if not isElement(pedElement) then
-			return false, error("DetachALL3DModelsFromElement: Invalid pedElement")
-		end
+		for RegisterId = 1, #DX_MODELS_REFERENCES do
+			local Value = DX_MODELS_REFERENCES[RegisterId]
 
-		for Key, Value in pairs(DX_MODELS_ATTACHMENTS) do
-			Detach3DModelFromBone(pedElement, Key)
+			if Value.Instance.PedElement == pedElement then
+				if Value.Element and isElement(Value.Element) then
+					Detach3DModelFromBone(Value.Element)
+				end
+			end
 		end
 	end, 
 
-	["Set3DModelBone"] = function(pedElement, key, bone)
-		if not ValidElementAndKey(pedElement, key) then
-			return false
-		end
-
-		local Bone = GetBoneId(bone)
-
-		if not Bone then
-			return false, error("Set3DModelBone: Invalid bone")
-		end
-
-		local Backup = DX_MODELS_ATTACHMENTS[key]
-
-		if Backup.PedElement ~= pedElement then
-			return false, error("Set3DModelBone: Attachment not found")
-		end
-
-		Update3DModelAttachment(Backup.PedElement, key, {Bone = Bone})
-
-		return true
+	["Set3DModelPed"] = function(model3DElement, pedElement)
+		return Update3DModelAttachment(model3DElement, {PedElement = pedElement})
 	end, 
 
-	["Set3DModelPositionOffset"] = function(pedElement, key, position)
-		if not ValidElementAndKey(pedElement, key) then
-			return false
-		end
-
-		local Backup = DX_MODELS_ATTACHMENTS[key]
-
-		if Backup.PedElement ~= pedElement then
-			return false, error("Set3DModelPositionOffset: Attachment not found")
-		end
-
-		Update3DModelAttachment(Backup.PedElement, key, {Position = position})
-
-		return true
+	["Set3DModelBone"] = function(model3DElementOrId, bone)
+		return Update3DModelAttachment(model3DElementOrId, {Bone = bone})
 	end, 
 
-	["Set3DModelRotationOffset"] = function(pedElement, key, rotation)
-		if not ValidElementAndKey(pedElement, key) then
-			return false
-		end
-
-		local Backup = DX_MODELS_ATTACHMENTS[key]
-
-		if Backup.PedElement ~= pedElement then
-			return false, error("Set3DModelRotationOffset: Attachment not found")
-		end
-
-		Update3DModelAttachment(Backup.PedElement, key, {Rotation = rotation})
-
-		return true
+	["Set3DModelPositionOffset"] = function(model3DElementOrId, position)
+		return Update3DModelAttachment(model3DElementOrId, {Position = position})
 	end, 
 
-	["Set3DModelScale"] = function(pedElement, key, scale)
-		if not ValidElementAndKey(pedElement, key) then
-			return false
-		end
-
-		local Backup = DX_MODELS_ATTACHMENTS[key]
-
-		if Backup.PedElement ~= pedElement then
-			return false, error("Set3DModelScale: Attachment not found")
-		end
-
-		Update3DModelAttachment(Backup.PedElement, key, {Scale = scale})
-
-		return true
+	["Set3DModelRotationOffset"] = function(model3DElementOrId, rotation)
+		return Update3DModelAttachment(model3DElementOrId, {Rotation = rotation})
 	end, 
 
-	["Set3DModelPed"] = function(pedElement, key, newPedElement)
-		if not ValidElementAndKey(pedElement, key) then
-			return false
-		end
-
-		Update3DModelAttachment(pedElement, key, {PedElement = newPedElement})
-
-		return true
+	["Set3DModelScale"] = function(model3DElementOrId, scale)
+		return Update3DModelAttachment(model3DElementOrId, {Scale = scale})
 	end, 
 
-	["Set3DModelVisible"] = function(pedElement, key, state)
-		if not ValidElementAndKey(pedElement, key) then
-			return false
-		end
-
-		local Backup = DX_MODELS_ATTACHMENTS[key]
-
-		if Backup.PedElement ~= pedElement then
-			return false, error("Set3DModelVisible: Attachment not found")
-		end
-
-		Update3DModelAttachment(Backup.PedElement, key, {Visible = state})
-
-		return true
+	["Set3DModelVisible"] = function(model3DElementOrId, visible)
+		return Update3DModelAttachment(model3DElementOrId, {Visible = visible})
 	end, 
 
-	["Set3DModelVisibleAll"] = function(state)
-		if state == nil then
-			return false, error("Set3DModelVisibleAll: Invalid arguments")
-		end
+	["Set3DModelVisibleAll"] = function(pedElement, visible)
+		for RegisterId = 1, #DX_MODELS_REFERENCES do
+			local Value = DX_MODELS_REFERENCES[RegisterId]
 
-		for Key, Value in pairs(DX_MODELS_ATTACHMENTS) do
-			Update3DModelAttachment(Value.PedElement, Key, {Visible = state})
+			if Value.Instance and Value.Instance.PedElement == pedElement then
+				Update3DModelAttachment(RegisterId, {Visible = visible})
+			end
 		end
 
 		return true
 	end, 
 
-	["Get3DModelAttachmentProperties"] = function(pedElement, key)
-		if not isElement(pedElement) then
-			return false, error("Get3DModelAttachmentProperties: Invalid pedElement")
+	["Set3DModelVisibleAllFromElement"] = function(pedElement, visible)
+		for RegisterId = 1, #DX_MODELS_REFERENCES do
+			local Value = DX_MODELS_REFERENCES[RegisterId]
+
+			if Value.Instance and Value.Instance.PedElement == pedElement then
+				Update3DModelAttachment(RegisterId, {Visible = visible})
+			end
 		end
 
-		if not key then
-			return false, error("Get3DModelAttachmentProperties: Invalid arguments")
-		end
-
-		local Backup = DX_MODELS_ATTACHMENTS[key]
-
-		if not Backup then
-			return false, error("Get3DModelAttachmentProperties: Attachment not found")
-		end
-
-		if Backup.PedElement ~= pedElement then
-			return false, error("Get3DModelAttachmentProperties: Attachment not found")
-		end
-
-		return Backup
+		return true
 	end
 }
 
@@ -312,45 +216,41 @@ for FunctionName, Function in pairs(UsefulFunctionsList) do
 end
 
 -- https://www.lua.org/pil/2.5.html
-function CheckAttachment(backup)
-	if not backup then
-		return false, error("CheckAttachment: Invalid arguments")
-	end
+function CheckAttachment(instance)
+	for Index = #DX_MODELS_RENDERED_CACHE, 1, -1 do
+		local Value = DX_MODELS_RENDERED_CACHE[Index]
 
-	for Index = #CACHE_FOR_3D_MODEL_RENDERING, 1, -1 do
-		local Value = CACHE_FOR_3D_MODEL_RENDERING[Index]
-
-		if Value and Value.PedElement == backup.PedElement and Value.Key == backup.Key then
-			table.remove(CACHE_FOR_3D_MODEL_RENDERING, Index)
+		if Value and Value.PedElement == instance.PedElement and Value.Element == instance.Element and Value.ModelId == instance.ModelId then
+			table.remove(DX_MODELS_RENDERED_CACHE, Index)
 		end
 	end
 
-	if Length(MODEL_CACHE_ASSIGNED_TO_STREAMING) ~= 0 then
-		local ModelCountList = CountModelOccurrences(MODEL_CACHE_ASSIGNED_TO_STREAMING)
+	if Length(DX_MODEL_CACHE_ASSIGNED_TO_STREAMING) ~= 0 then
+		local ModelCountList = CountModelOccurrences(DX_MODEL_CACHE_ASSIGNED_TO_STREAMING)
 
-		for Index = 1, #MODEL_CACHE_ASSIGNED_TO_STREAMING do
-			local Value = MODEL_CACHE_ASSIGNED_TO_STREAMING[Index]
+		for Index = 1, #DX_MODEL_CACHE_ASSIGNED_TO_STREAMING do
+			local Value = DX_MODEL_CACHE_ASSIGNED_TO_STREAMING[Index]
 
-			if Value and Value == backup.ModelId then
-				table.remove(MODEL_CACHE_ASSIGNED_TO_STREAMING, Index)
+			if Value and Value == instance.ModelId then
+				table.remove(DX_MODEL_CACHE_ASSIGNED_TO_STREAMING, Index)
 				ModelCountList[Value] = ModelCountList[Value] - 1
 
 				if ModelCountList[Value] == 0 then
-					engineStreamingReleaseModel(Value, true)
+					engineStreamingReleaseModel(Value)
 					ModelCountList[Value] = nil
 				end
 			end
 		end
 	end
 
-	if Length(MODEL_CACHE_ASSIGNED_TO_STREAMING) == 0 then
+	if Length(DX_MODEL_CACHE_ASSIGNED_TO_STREAMING) == 0 then
 		for ModelId in pairs(DX_MODELS_STREAMING) do
 			engineStreamingReleaseModel(ModelId, true)
 			DX_MODELS_STREAMING[ModelId] = nil
 		end
-	end
 
-	return true
+		DX_MODELS_REFERENCES = {}
+	end
 end
 
 -- https://wiki.multitheftauto.com/wiki/DxDrawModel3D
@@ -364,16 +264,16 @@ local GetPedBonePosition = getPedBonePosition
 
 local DxDrawModel3D = dxDrawModel3D
 
--- https://wiki.multitheftauto.com/wiki/OnClientPreRender
+-- https://wiki.multitheftauto.com/wiki/OnClientPedsProcessed
 local TransformedBoneMatrix
 local EulerX, EulerY, EulerZ
 local OffsetX, OffsetY, OffsetZ
 
-local function OnClientPreRender()
+local function OnClientPedsProcessed()
 	local BoneMatrixCache = {}
 
-	for Index = 1, #CACHE_FOR_3D_MODEL_RENDERING do
-		local Value = CACHE_FOR_3D_MODEL_RENDERING[Index]
+	for Index = 1, #DX_MODELS_RENDERED_CACHE do
+		local Value = DX_MODELS_RENDERED_CACHE[Index]
 
 		if Value and Value.Visible then
 			local PedElement = Value.PedElement
@@ -399,21 +299,18 @@ local function OnClientPreRender()
 				if BoneMatrix then
 					Value.Drawing = true
 
-					local ModelId = Value.ModelId
-					local RotationMatrix = Value.RotationMatrix
+					local Position = Value.Position
+					local Scale = Value.Scale
 
-					local PositionX, PositionY, PositionZ = Value.Position[1], Value.Position[2], Value.Position[3]
-					local ScaleX, ScaleY, ScaleZ = Value.Scale[1], Value.Scale[2], Value.Scale[3]
-
-					TransformedBoneMatrix = CreateTransformedBoneMatrix(BoneMatrix, RotationMatrix, PositionX, PositionY, PositionZ)
+					TransformedBoneMatrix = CreateTransformedBoneMatrix(BoneMatrix, Value.RotationMatrix, Position[1], Position[2], Position[3])
 					EulerX, EulerY, EulerZ = GetEulerAnglesFromMatrix(TransformedBoneMatrix)
-					OffsetX, OffsetY, OffsetZ = GetPositionFromMatrixOffset(TransformedBoneMatrix, 0, 0, 0)
+					MatrixOffset = GetPositionFromMatrixOffset(TransformedBoneMatrix, 0, 0, 0)
 
 					DxDrawModel3D(
-						ModelId, 
-						OffsetX, OffsetY, OffsetZ, 
+						Value.ModelId, 
+						MatrixOffset[1], MatrixOffset[2], MatrixOffset[3], 
 						EulerX, EulerY, EulerZ, 
-						ScaleX, ScaleY, ScaleZ
+						Scale[1], Scale[2], Scale[3]
 					)
 				end
 			else
@@ -428,7 +325,5 @@ end
 -- https://wiki.multitheftauto.com/wiki/AddEventHandler / https://wiki.multitheftauto.com/wiki/RemoveEventHandler
 function ToggleEvents(state)
 	local RemoteEvent = state and addEventHandler or removeEventHandler
-
-	RendererState = state
-	RemoteEvent("onClientPreRender", getRootElement(), OnClientPreRender)
+	RemoteEvent("onClientPedsProcessed", getRootElement(), OnClientPedsProcessed)
 end

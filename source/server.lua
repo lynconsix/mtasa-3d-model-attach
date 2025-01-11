@@ -11,218 +11,159 @@ addEventHandler("onPlayerResourceStart", getRootElement(),
 	end
 )
 
--- https://wiki.multitheftauto.com/wiki/IsElement
-local function ValidElementAndKey(pedElement, key)
-	if not isElement(pedElement) then
-		return false, error("Invalid pedElement")
-	end
-
-	if not key then
-		return false, error("Invalid key")
-	end
-
-	if not MODELS_ATTACHMENTS_CACHE[key] then
-		return false, error("Invalid key")
-	end
-
-	return true
+-- https://www.lua.org/pil/2.5.html
+function IsModel3DAttachedToBone(identifier)
+	return MODELS_ATTACHMENTS_CACHE[identifier] and true or false
 end
 
 -- https://wiki.multitheftauto.com/wiki/TriggerClientEvent
-function Attach3DModelToBone(pedElement, key, modelId, bone, position, rotation, scale)
-	if not isElement(pedElement) then
-		return false, error("Attach3DModelToBone: Invalid pedElement")
-	end
+function Attach3DModelToBone(pedElement, modelId, bone, position, rotation, scale)
+	assert(isElement(pedElement), "Attach3DModelToBone: Invalid pedElement")
+	assert(modelId and bone, "Attach3DModelToBone: Invalid arguments")
 
-	if not modelId or not bone then
-		return false, error("Attach3DModelToBone: Invalid arguments")
-	end
+	local RegisterId = FindEmptyEntry(MODELS_ATTACHMENTS_CACHE)
+	local Instance = {}
 
-	if not MODELS_ATTACHMENTS_CACHE[key] then
-		MODELS_ATTACHMENTS_CACHE[key] = {
-			Visible = true,
+	Instance.Visible = true
+	Instance.PedElement = pedElement
 
-			PedElement = pedElement,
-			Key = key,
+	Instance.ModelId = modelId
+	Instance.Bone = bone
 
-			ModelId = modelId,
-			Bone = bone,
+	Instance.Position = position or {0, 0, 0}
+	Instance.Rotation = rotation or {0, 0, 0}
 
-			Position = position or {0, 0, 0},
-			Rotation = rotation or {0, 0, 0},
+	Instance.Scale = scale or {1, 1, 1}
 
-			Scale = scale or {1, 1, 1}
-		}
-	end
+	MODELS_ATTACHMENTS_CACHE[RegisterId] = Instance
+	triggerClientEvent(getRootElement(), "onClientAttach3DModel", getResourceRootElement(), pedElement, modelId, bone, position, rotation, scale)
 
-	return triggerClientEvent(getRootElement(), "onClientAttach3DModel", getResourceRootElement(), pedElement, key, modelId, bone, position, rotation, scale)
+	return RegisterId
 end
 
 -- https://wiki.multitheftauto.com/wiki/TriggerClientEvent
-function Detach3DModelFromBone(pedElement, key)
-	if not isElement(pedElement) then
-		return false, error("Detach3DModelFromBone: Invalid pedElement")
-	end
+function Detach3DModelFromBone(identifier)
+	assert(MODELS_ATTACHMENTS_CACHE[identifier], "Detach3DModelFromBone: Invalid identifier")
 
-	if not key then
-		return false, error("Detach3DModelFromBone: Invalid arguments")
-	end
+	local Instance = MODELS_ATTACHMENTS_CACHE[identifier]
+	MODELS_ATTACHMENTS_CACHE[identifier] = nil
 
-	if MODELS_ATTACHMENTS_CACHE[key].PedElement ~= pedElement then
-		return false, error("Detach3DModelFromBone: Attachment not found")
-	end
-
-	if MODELS_ATTACHMENTS_CACHE[key] then
-		MODELS_ATTACHMENTS_CACHE[key] = nil
-	end
-
-	return triggerClientEvent(getRootElement(), "onClientDetach3DModel", getResourceRootElement(), pedElement, key)
+	return triggerClientEvent(getRootElement(), "onClientDetach3DModel", getResourceRootElement(), identifier)
 end
 
 -- https://wiki.multitheftauto.com/wiki/TriggerClientEvent
-function Update3DModelAttachment(pedElement, key, properties)
-	if not ValidElementAndKey(pedElement, key) then
-		return false
-	end
+function Update3DModelAttachment(identifier, properties)
+	local Instance = MODELS_ATTACHMENTS_CACHE[identifier]
+	assert(Instance, "Update3DModelAttachment: Invalid identifier")
 
 	for Property, Value in pairs(properties) do
-		MODELS_ATTACHMENTS_CACHE[key][Property] = Value
+		Instance[Property] = Value
 	end
 
-	return triggerClientEvent(getRootElement(), "onClientUpdate3DModel", getResourceRootElement(), pedElement, key, properties)
+	return triggerClientEvent(getRootElement(), "onClientUpdate3DModel", getResourceRootElement(), identifier, properties)
+end
+
+-- https://www.lua.org/pil/2.5.html
+function Get3DModelProperties(identifier)
+	return MODELS_ATTACHMENTS_CACHE[identifier]
 end
 
 -- https://www.lua.org/pil/2.5.html
 local UsefulFunctionsList = {
-	["Is3DModelAttachedToBone"] = function(pedElement, key)
-		if not isElement(pedElement) then
-			return false, error("Is3DModelAttachedToBone: Invalid pedElement")
-		end
-
-		if not key then
-			return false, error("Is3DModelAttachedToBone: Invalid arguments")
-		end
-
-		return MODELS_ATTACHMENTS_CACHE[key] and MODELS_ATTACHMENTS_CACHE[key].PedElement == pedElement
-	end, 
-
 	["DetachALL3DModels"] = function()
-		for Key, Value in pairs(MODELS_ATTACHMENTS_CACHE) do
-			Detach3DModelFromBone(Value.PedElement, Key)
+		for Identifier in pairs(MODELS_ATTACHMENTS_CACHE) do
+			Detach3DModelFromBone(Identifier)
 		end
 	end, 
 
 	["DetachALL3DModelsFromElement"] = function(pedElement)
-		if not isElement(pedElement) then
-			return false, error("DetachALL3DModelsFromElement: Invalid pedElement")
-		end
-
-		for Key, Value in pairs(MODELS_ATTACHMENTS_CACHE) do
-			Detach3DModelFromBone(pedElement, Key)
-		end
-	end, 
-
-	["Set3DModelBone"] = function(pedElement, key, bone)
-		if not ValidElementAndKey(pedElement, key) then
-			return false
-		end
-
-		MODELS_ATTACHMENTS_CACHE[key].Bone = bone
-		return triggerClientEvent(getRootElement(), "onClientUsefulUpdate3DModel", getResourceRootElement(), "Bone", pedElement, key, {Bone = bone})
-	end, 
-
-	["Set3DModelPositionOffset"] = function(pedElement, key, position)
-		if not ValidElementAndKey(pedElement, key) then
-			return false
-		end
-
-		MODELS_ATTACHMENTS_CACHE[key].Position = position
-		return triggerClientEvent(getRootElement(), "onClientUsefulUpdate3DModel", getResourceRootElement(), "PositionOffset", pedElement, key, {Position = position})
-	end, 
-
-	["Set3DModelRotationOffset"] = function(pedElement, key, rotation)
-		if not ValidElementAndKey(pedElement, key) then
-			return false
-		end
-
-		MODELS_ATTACHMENTS_CACHE[key].Rotation = rotation
-		return triggerClientEvent(getRootElement(), "onClientUsefulUpdate3DModel", getResourceRootElement(), "RotationOffset", pedElement, key, {Rotation = rotation})
-	end, 
-
-	["Set3DModelScale"] = function(pedElement, key, scale)
-		if not ValidElementAndKey(pedElement, key) then
-			return false
-		end
-
-		MODELS_ATTACHMENTS_CACHE[key].Scale = scale
-		return triggerClientEvent(getRootElement(), "onClientUsefulUpdate3DModel", getResourceRootElement(), "Scale", pedElement, key, {Scale = scale})
-	end, 
-
-	["Set3DModelPed"] = function(pedElement, key, newPedElement)
-		if not isElement(pedElement) then
-			return false, error("Set3DModelPed: Invalid pedElement")
-		end
-
-		if not key or not isElement(newPedElement) then
-			return false, error("Set3DModelPed: Invalid arguments")
-		end
-
-		if not MODELS_ATTACHMENTS_CACHE[key] then
-			return false, error("Set3DModelPed: Attachment not found")
-		end
-
-		Update3DModelAttachment(pedElement, key, {PedElement = newPedElement})
-
-		return true
-	end, 
-
-	["Set3DModelVisible"] = function(pedElement, key, state)
-		if not ValidElementAndKey(pedElement, key) then
-			return false
-		end
-
-		MODELS_ATTACHMENTS_CACHE[key].Visible = state
-		return triggerClientEvent(getRootElement(), "onClientUsefulUpdate3DModel", getResourceRootElement(), "Visible", pedElement, key, {Visible = state})
-	end, 
-
-	["Set3DModelVisibleAll"] = function(state)
-		for Key, Value in pairs(MODELS_ATTACHMENTS_CACHE) do
-			Value.Visible = state
-
-			triggerClientEvent(getRootElement(), "onClientUsefulUpdate3DModel", getResourceRootElement(), "VisibleAll", Value.PedElement, Key, {Visible = state})
-		end
-	end, 
-
-	["Set3DModelVisibleAllFromElement"] = function(pedElement, state)
-		for Key, Value in pairs(MODELS_ATTACHMENTS_CACHE) do
-			if Value.PedElement == pedElement then
-				Value.Visible = state
-
-				triggerClientEvent(getRootElement(), "onClientUsefulUpdate3DModel", getResourceRootElement(), "VisibleAllFromElement", pedElement, Key, {Visible = state})
+		for Identifier, Instance in pairs(MODELS_ATTACHMENTS_CACHE) do
+			if Instance.PedElement == pedElement then
+				Detach3DModelFromBone(Identifier)
 			end
 		end
 	end, 
 
-	["Get3DModelAttachmentProperties"] = function(pedElement, key)
-		if not isElement(pedElement) then
-			return false, error("Get3DModelAttachmentProperties: Invalid pedElement")
+	["Set3DModelPed"] = function(identifier, pedElement)
+		local Instance = MODELS_ATTACHMENTS_CACHE[identifier]
+		assert(Instance, "Set3DModelPed: Invalid identifier")
+
+		Instance.PedElement = pedElement
+		triggerClientEvent(getRootElement(), "onClientUsefulUpdate3DModel", getResourceRootElement(), "PedElement", identifier, {PedElement = pedElement}, pedElement)
+
+		return true
+	end, 
+
+	["Set3DModelBone"] = function(identifier, bone)
+		local Instance = MODELS_ATTACHMENTS_CACHE[identifier]
+		assert(Instance, "Set3DModelBone: Invalid identifier")
+
+		Instance.Bone = bone
+		triggerClientEvent(getRootElement(), "onClientUsefulUpdate3DModel", getResourceRootElement(), "Bone", identifier, {Bone = bone})
+
+		return true
+	end,
+
+	["Set3DModelPositionOffset"] = function(identifier, positionOffset)
+		local Instance = MODELS_ATTACHMENTS_CACHE[identifier]
+		assert(Instance, "Set3DModelPositionOffset: Invalid identifier")
+
+		Instance.Position = positionOffset
+		triggerClientEvent(getRootElement(), "onClientUsefulUpdate3DModel", getResourceRootElement(), "PositionOffset", identifier, {Position = positionOffset})
+
+		return true
+	end,
+
+	["Set3DModelRotationOffset"] = function(identifier, rotationOffset)
+		local Instance = MODELS_ATTACHMENTS_CACHE[identifier]
+		assert(Instance, "Set3DModelRotationOffset: Invalid identifier")
+
+		Instance.Rotation = rotationOffset
+		triggerClientEvent(getRootElement(), "onClientUsefulUpdate3DModel", getResourceRootElement(), "RotationOffset", identifier, {Rotation = rotationOffset})
+
+		return true
+	end,
+
+	["Set3DModelScale"] = function(identifier, scale)
+		local Instance = MODELS_ATTACHMENTS_CACHE[identifier]
+		assert(Instance, "Set3DModelScale: Invalid identifier")
+
+		Instance.Scale = scale
+		triggerClientEvent(getRootElement(), "onClientUsefulUpdate3DModel", getResourceRootElement(), "Scale", identifier, {Scale = scale})
+
+		return true
+	end,
+
+	["Set3DModelVisible"] = function(identifier, visible)
+		local Instance = MODELS_ATTACHMENTS_CACHE[identifier]
+		assert(Instance, "Set3DModelVisible: Invalid identifier")
+
+		Instance.Visible = visible
+		triggerClientEvent(getRootElement(), "onClientUsefulUpdate3DModel", getResourceRootElement(), "Visible", identifier, {Visible = visible})
+
+		return true
+	end,
+
+	["Set3DModelVisibleAll"] = function(visible)
+		for Identifier in pairs(MODELS_ATTACHMENTS_CACHE) do
+			MODELS_ATTACHMENTS_CACHE[Identifier].Visible = visible
 		end
 
-		if not key then
-			return false, error("Get3DModelAttachmentProperties: Invalid arguments")
+		triggerClientEvent(getRootElement(), "onClientUsefulUpdate3DModel", getResourceRootElement(), "VisibileAll", identifier, {Visible = visible})
+
+		return true
+	end, 
+
+	["Set3DModelVisibleAllFromElement"] = function(pedElement)
+		for Identifier, Instance in pairs(MODELS_ATTACHMENTS_CACHE) do
+			if Instance.PedElement == pedElement then
+				Instance.Visible = visible
+			end
 		end
 
-		local Backup = MODELS_ATTACHMENTS_CACHE[key]
+		triggerClientEvent(getRootElement(), "onClientUsefulUpdate3DModel", getResourceRootElement(), "VisibleAllFromElement", identifier, {Visible = visible}, pedElement)
 
-		if not Backup then
-			return false, error("Get3DModelAttachmentProperties: Attachment not found")
-		end
-
-		if Backup.PedElement ~= pedElement then
-			return false, error("Get3DModelAttachmentProperties: Attachment not found")
-		end
-
-		return Backup
+		return true
 	end
 }
 
